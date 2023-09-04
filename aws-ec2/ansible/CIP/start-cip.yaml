@@ -1,0 +1,52 @@
+- name: AG Installation
+  hosts: cip-instance
+  become: yes # Run tasks with root privileges
+
+  tasks:
+
+
+    - name: Load Global parameters
+      include_vars:
+        file: ../installer-versions.yml
+    
+    - name: Load Config parameters
+      include_vars:
+        file: ./config-params.yml
+
+   
+
+    - name: Read Coop Configuration File
+      slurp:
+        src: /apps/abinitio/release/coop-config.ini
+      register: coop_config_file_content
+
+
+   
+    - name: Start CIP Subsystems
+      ansible.builtin.command: '/apps/abinitio/release/source_and_run.sh {{ item }}'
+      with_items:
+        - "{{ sandbox_root }}/abinitio/cip/private_internal/run/start_system.ksh"
+      register: command_output
+      become_user: abinitio
+      args:
+        chdir: "{{ sandbox_root }}/abinitio/cip/private_internal/run"
+    
+    - name: Pause for 60 seconds
+      pause:
+        seconds: 60
+    
+    - name: Check Status of Subsystems
+      ansible.builtin.command: '/apps/abinitio/release/source_and_run.sh {{ item }}'
+      with_items:
+        - "{{ sandbox_root }}/abinitio/cip/private_internal/bin/cip-control.ksh status all"
+      register: command_output
+      become_user: abinitio
+      args:
+        chdir: "{{ sandbox_root }}/abinitio/cip/private_internal/run"
+
+    - name: Display Status
+      ansible.builtin.debug:
+        var: command_output
+  handlers:
+    - name: Reload Profile
+      shell: source /etc/profile  # Command to reload the profile
