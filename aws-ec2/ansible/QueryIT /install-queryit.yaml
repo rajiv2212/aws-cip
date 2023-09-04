@@ -1,0 +1,149 @@
+- name: AG Installation
+  hosts: cip-instance
+  become: yes # Run tasks with root privileges
+
+  tasks:
+
+    - name: Transfer installer-versions.yml
+      copy:
+        src: ../installer-versions.yml
+        dest: /tmp/installer-versions.yml
+        remote_src: false
+      become_user: abinitio
+    
+
+
+    - name: Load Global parameters
+      include_vars:
+        file: ../installer-versions.yml
+    
+    - name: Load Config parameters
+      include_vars:
+        file: ./config-params.yml
+
+    - name: Copy Config File
+      copy:
+        src: "../Coop/coop-config.ini"
+        dest: "/apps/abinitio/release/"
+        remote_src: false
+      become_user: abinitio
+  
+    - name: Display Version
+      ansible.builtin.debug:
+        var: query_it_version
+
+    - name: Read Coop Configuration File
+      slurp:
+        src: /apps/abinitio/release/coop-config.ini
+      register: coop_config_file_content
+
+
+
+    - name: Parse Coop Configuration Values
+      set_fact:
+        coop_config_values: "{{ (coop_config_file_content['content'] | b64decode).split('\n') | map('trim') }}"
+      register: parsed_config
+
+
+    - name: Read Installation Directory value from config
+      set_fact:
+        destination: "{{ coop_config_values | select('match', '^destination=(.*)') | map('regex_replace', '^destination=(.*)', '\\1') | first }}"
+        app_hub_dest: "{{ coop_config_values | select('match', '^app_hub_dest=(.*)') | map('regex_replace', '^app_hub_dest=(.*)', '\\1') | first }}"
+
+    - name: Create sandbox and UI directory
+      shell: |
+        sudo mkdir -p {{ sandbox_root }}/queryit
+        sudo mkdir -p /data/queryitdata
+        sudo chown -R {{ item }}:{{ item }} /data
+      loop:
+        - abinitio
+
+    - name: Copy files to remote host
+      copy:
+        src: "{{ destination }}/abinitio-V{{ coop_version }}/lib/absql/absql.tar.gz"
+        dest:  "{{ sandbox_root }}"
+        remote_src: true
+      become_user: abinitio
+
+  
+
+    #- name: Untar Files
+    #  shell: |
+    #    su - {{ item }} -c "tar xvf {{ sandbox_root }}/absql.tar.gz -C {{ sandbox_root }}"
+    #  register: command_output
+    #  loop:
+    #    - abinitio
+
+    - name: Untar Files
+      ansible.builtin.command: "tar xvf {{ sandbox_root }}/absql.tar.gz -C {{ sandbox_root }}"
+      register: command_output
+      become_user: abinitio
+
+    - name: Display Status
+      ansible.builtin.debug:
+        var: command_output
+ 
+    
+    - name: "Fetch JAVA_HOME"
+      shell: dirname $(dirname $(readlink -f $(which java)))
+      register: java_home 
+    
+
+    - name: Get Python Path
+      shell: "which python3"
+      register: python_path
+
+  
+
+    
+        
+    - name: Install QueryIT
+      ansible.builtin.command: 
+         cmd: sh -c "source /etc/profile && ./config-absql-sandbox.ksh -sandbox {{ sandbox_root }}/queryit -datadir /data/queryitdata -password {{ query_it_passwd }} -yes"
+      register: command_output
+      become_user: abinitio
+      args:
+        chdir: "{{ sandbox_root }}/absql/bin"
+
+    - name: Start QueryIT
+      ansible.builtin.command: "/apps/abinitio/release/source_and_run.sh {{ item }}"
+      with_items:
+        - "ab-qi service start"
+        - "ab-qi service status"
+        - air sandbox parameter -basedir . common -common {{ sandbox_root }}/abinitio/cip/private_internal
+      register: command_output
+      become_user: abinitio
+      args:
+        chdir: "{{ sandbox_root }}/queryit"
+
+    - name: Display Status
+      ansible.builtin.debug:
+        var: command_output
+
+    - name: Set Query IT Params in CIP
+      ansible.builtin.command: "/apps/abinitio/release/source_and_run.sh {{ item }}"
+      with_items:
+       - air sandbox parameter -path ./.sandbox.pset CIP_COMMON_QUERY_IT_SANDBOX@ {{ sandbox_root }}/queryit
+       - air sandbox parameter -path ./.sandbox.pset CIP_COMMON_QUERY_IT_DB_USERNAME@ abinitio
+       - air sandbox parameter -path ./.sandbox.pset CIP_COMMON_QUERY_IT_DB_PASSWORD@ {{ query_it_passwd }}
+      register: command_output
+      become_user: abinitio
+      args:
+        chdir: "{{ sandbox_root }}/abinitio/cip/private_internal"
+
+    - name: Display Status
+      ansible.builtin.debug:
+        var: command_output
+
+    - name: Add Keyserver information in global apphubrc
+      lineinfile:
+        path: "{{ app_hub_dest }}/config/apphubrc"
+        line: |
+          AB_SQL_INSTANCES : queryit
+          AB_SQL_INSTANCE_PATH @ queryit : {{ sandbox_root }}/queryit
+
+
+
+  handlers:
+    - name: Reload Profile
+      shell: source /etc/profile  # Command to reload the profile
