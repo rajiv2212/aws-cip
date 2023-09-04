@@ -1,0 +1,172 @@
+def choiceArray = []
+node {
+    checkout scm
+    def instances = sh(returnStdout: true, script: 'aws ec2 describe-instance-types --query "InstanceTypes[].InstanceType" --output text')
+    
+    instances.split().each {
+        //condition to skip files if any
+        choiceArray << it
+    }
+}
+
+pipeline
+{
+        agent any
+        tools 
+            {
+                terraform 'Terraform'
+            }
+       
+        parameters {
+        string(name: 'DEMO_TYPE', defaultValue: '', description: 'Installer Files to be copied')
+        choice(name: 'DEMO_TYPE', choices: ['TELCO', 'BANKING'] , description: 'Select EC2 instance type')
+        choice(name: 'APPLICATIONS_TO_INSTALL', choices: ['TELCO', 'BANKING'] , description: 'Select EC2 instance type')
+
+    }
+    environment {
+		LOG_FILE="/home/jenkins/demo_setup.log"
+        TIME_FORMAT = "yyyy-MM-dd HH:mm:ss"
+	}
+    stages
+    {
+        stage('Terraform Init & Plan --> Initialize EC2 instance')
+        {  
+            steps 
+            { 
+                script {
+                    
+                    def sT = new Date()
+                    def timeFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+                    def startTime = sT.format(TIME_FORMAT)
+                    echo "##### SUMMARY LOG FILE : ${env.LOG_FILE} #########"
+                    sh "rm -f ${env.LOG_FILE}"
+                    sh "touch ${env.LOG_FILE}"
+                    sh "echo ----------- SERVER CREATION STARTED -----------  >> ${env.LOG_FILE}"
+                    sh "echo Start Time ::  ${startTime} >> ${env.LOG_FILE}" 
+                    sh 'cd "${WORKSPACE}/aws-ec2/terraform" ;pwd;terraform init --lock=false;terraform plan --lock=false;terraform plan'
+                   
+                }
+                
+            }
+        }
+        stage('Terraform Apply -> Create EC2 Instance') 
+        { 
+            steps 
+            { 
+              script {  
+                dir("${WORKSPACE}/aws-ec2/terraform")
+                {
+                sh 'terraform apply --lock=false -auto-approve' 
+                 def eT = new Date()
+                 def endTime = eT.format(TIME_FORMAT)
+                 sh "echo End Time ::  ${endTime} >> ${env.LOG_FILE}" 
+                 sh "echo SERVER PUBLIC IPs >> ${env.LOG_FILE}" 
+                 sh "terraform output >> ${env.LOG_FILE}"
+                 sh "echo ------- SERVER CREATION SUCCESSFUL ---------- >> ${env.LOG_FILE}"
+                 cip_instance_public_ipunt= sh(script: "terraform output cip_instance_public_ip", returnStdout:true).split();
+                 a360_instance_public_ip= sh(script: "terraform output a360_instance_public_ip", returnStdout:true).split();
+                }
+              }
+
+            }
+        }
+         stage('Configure Server') 
+        { 
+            steps  
+            { 
+            script{
+                def sT = new Date()
+                def startTime = sT.format(TIME_FORMAT)
+                sh "echo ----------- SERVER CONFIGURATION STARTED -----------  >> ${env.LOG_FILE}"
+                sh "echo Start Time ::  ${startTime} >> ${env.LOG_FILE}" 
+                sh 'cd "${WORKSPACE}/aws-ec2/ansible/ServerConfig"  ; ansible-playbook -i ../../terraform/inventory.yml -u ec2-user --private-key=../../terraform/aws-cip-key.pem configure-server.yaml' 
+                def eT = new Date()
+                def endTime = eT.format(TIME_FORMAT)
+                sh "echo End Time ::  ${endTime} >> ${env.LOG_FILE}" 
+                sh "echo ------- SERVER CONFIGURATION SUCCESSFUL ---------- >> ${env.LOG_FILE}"
+            }
+
+            }
+        }
+        
+        stage('Install Co>Operating System') 
+        { 
+            steps 
+            { 
+              script{
+                def sT = new Date()
+                def startTime = sT.format(TIME_FORMAT)
+                sh "echo ----------- COOP INSTALLATION STARTED -----------  >> ${env.LOG_FILE}"
+                sh 'cd "${WORKSPACE}/aws-ec2/ansible/Coop"  ; ansible-playbook -i ../../terraform/inventory.yml -u ec2-user --private-key=../../terraform/aws-cip-key.pem install-coop.yaml' 
+                def eT = new Date()
+                def endTime = eT.format(TIME_FORMAT)
+                sh "echo End Time ::  ${endTime} >> ${env.LOG_FILE}" 
+                sh "echo ------- COOP INSTALLATION SUCCESSFUL ---------- >> ${env.LOG_FILE}"
+              }
+
+            }
+        }
+        stage('Install AG') 
+        { 
+            steps 
+            { 
+                echo""
+                sh 'cd "${WORKSPACE}/aws-ec2/ansible/AG"  ; ansible-playbook -i ../../terraform/inventory.yml -u ec2-user --private-key=../../terraform/aws-cip-key.pem install-AG.yaml' 
+
+            }
+        }
+        stage('Install Cafe') 
+        { 
+            steps 
+            { 
+                echo""
+                sh 'cd "${WORKSPACE}/aws-ec2/ansible/Cafe"  ; ansible-playbook -i ../../terraform/inventory.yml -u ec2-user --private-key=../../terraform/aws-cip-key.pem install-cafe.yaml' 
+
+            }
+        }
+        stage('Install CC') 
+        { 
+            steps 
+            { 
+                echo""
+                //sh 'cd "${WORKSPACE}/aws-ec2/ansible/CC"  ; ansible-playbook -i ../../terraform/inventory.yml -u ec2-user --private-key=../../terraform/aws-cip-key.pem install-CC.yaml' 
+
+            }
+        }
+        /*stage('Install A360') 
+        { 
+            steps 
+            { 
+                sh 'cd "${WORKSPACE}/aws-ec2/ansible/act360"  ; ansible-playbook -i ../../terraform/inventory.yml -u ec2-user --private-key=../../terraform/aws-cip-key.pem install-act360.yaml' 
+
+            }
+        }*/
+         stage('Install CIP') 
+        { 
+            steps 
+            { 
+                echo""
+                //sh 'cd "${WORKSPACE}/aws-ec2/ansible/CIP"  ; ansible-playbook -i ../../terraform/inventory.yml -u ec2-user --private-key=../../terraform/aws-cip-key.pem install-cip.yaml' 
+
+            }
+        }
+        stage('Install QueryIT') 
+        { 
+            steps 
+            { 
+                echo""
+                //sh 'cd "${WORKSPACE}/aws-ec2/ansible/QueryIT"  ; ansible-playbook -i ../../terraform/inventory.yml -u ec2-user --private-key=../../terraform/aws-cip-key.pem install-queryit.yaml' 
+
+            }
+        }
+        stage('Start CIP') 
+        { 
+            steps 
+            { 
+                echo""
+                //sh 'cd "${WORKSPACE}/aws-ec2/ansible/CIP"  ; ansible-playbook -i ../../terraform/inventory.yml -u ec2-user --private-key=../../terraform/aws-cip-key.pem start-cip.yaml' 
+
+            }
+        }
+    }
+}
