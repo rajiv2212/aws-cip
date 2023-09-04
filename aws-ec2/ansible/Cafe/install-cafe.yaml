@@ -1,0 +1,89 @@
+- name: Cafe Installation
+  hosts: cip-instance
+  become: yes # Run tasks with root privileges
+  vars:
+    cafe_version: "{{ lookup('env', 'CAFE_VERSION').split(',')[0] }}"
+  tasks:
+    - name: Copy Config File
+      copy:
+        src: "./cafe-config.ini"
+        dest: "/apps/abinitio/release/"
+        remote_src: false
+      become_user: abinitio
+
+    - name: Read Configuration File
+      slurp:
+        src: /apps/abinitio/release/cafe-config.ini
+      register: config_file_content
+
+    - name: Find the Installer Tar
+      find:
+        paths: /apps/abinitio/release/
+        patterns: "Cafe.*{{ cafe_version }}.tgz"
+      register: found_files
+      delegate_to: localhost
+      become: false
+    - name: Display  File List
+      ansible.builtin.debug:
+        var: found_files
+
+    - name: Copy files to remote host
+      copy:
+        src: "{{ item.path }}"
+        dest: /apps/abinitio/release/
+        remote_src: false
+      loop: "{{ found_files.files }}"
+      become_user: abinitio
+
+    - name: Extract Folder Path
+      set_fact:
+        folder_path: "{{ found_files.files[0].path |  regex_replace('\\.tgz$', '')  }}"
+
+    - name: Display  Folder Path
+      ansible.builtin.debug:
+        var: folder_path
+
+    - name: Untar Files
+      shell: |
+        su - {{ item }} -c "tar zxvf /apps/abinitio/release/Cafe*.tgz -C /apps/abinitio/release/"
+      loop:
+        - abinitio
+
+    - name: Parse Configuration Values
+      set_fact:
+        config_values: "{{ (config_file_content['content'] | b64decode).split('\n') | map('trim') }}"
+      register: parsed_config
+      
+    - name: Skip Header Line
+      set_fact:
+        config_values_no_header: "{{ config_values | reject('match', '^\\[Cafe\\]$') | list }}"
+
+    - name: Display Arguments
+      debug:
+        var: config_values_no_header  
+
+    - name: Read Installation Directory value from config
+      set_fact:
+        http_port: "{{ config_values | select('match', '^http_port=(.*)') | map('regex_replace', '^http_port=(.*)', '\\1') | first }}"
+       
+    - name: Run Install Script
+      expect:
+        command: sh -c "source /etc/profile && ./setup.sh"
+        chdir: "{{ folder_path }}"  
+        responses:
+          'Perform the basic Cafe installation?': "no"
+          "call the web application" :  "cipcafe.war"
+          "listen on" : "{{ http_port }}"
+          "What application server are you using?" : "{{ app_server }}"
+          "Does the application require external configuration" : "no"
+          "Use https for all connections between the web browser and web application" : "no"
+          "Set the Secure attribute on cookies returned by the application" : "no"
+          "logical name for this intallation" : "cipcafe"
+          "Authentication Type? (AG, SSO):" : "AG"
+        timeout: 10
+      become_user: abinitio
+      register: expect_result
+
+    - name: Display Expect Script Output
+      debug:
+        var: expect_result.stdout_lines
