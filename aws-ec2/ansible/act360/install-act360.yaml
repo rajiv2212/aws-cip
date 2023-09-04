@@ -1,0 +1,215 @@
+- name: AG Installation
+  hosts: a360-instance
+  become: yes # Run tasks with root privileges
+
+  tasks:
+
+    - name: Transfer installer-versions.yml
+      copy:
+        src: ../installer-versions.yml
+        dest: /tmp/installer-versions.yml
+        remote_src: false
+      become_user: abinitio
+    
+    - name: Copy the wrapper script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/ksh
+          source /etc/profile
+          unset PG_HOME
+          unset LD_LIBRARY_PATH
+          unset PYTHONPATH
+        dest: /apps/abinitio/release/source_and_run_act360.ksh
+        mode: "0755"
+        owner: abinitio
+
+    - name: Load Global parameters
+      include_vars:
+        file: ../installer-versions.yml
+    
+    - name: Load Config parameters
+      include_vars:
+        file: ./config-params.yml
+
+    - name: Copy Config File
+      copy:
+        src: "../Coop/coop-config.ini"
+        dest: "/apps/abinitio/release/"
+        remote_src: false
+      become_user: abinitio
+  
+    - name: Display Version
+      ansible.builtin.debug:
+        var: a360_version
+
+    - name: Read Coop Configuration File
+      slurp:
+        src: /apps/abinitio/release/coop-config.ini
+      register: coop_config_file_content
+
+
+    - name: Find the Installer Tar
+      find:
+        paths: /apps/abinitio/release/
+        patterns: "Active360_*{{ a360_version }}.tgz"
+      register: found_files
+      delegate_to: localhost
+      become: false
+    - name: Display  File List
+      ansible.builtin.debug:
+        var: found_files
+
+    - name: Copy files to remote host
+      copy:
+        src: "{{ item.path }}"
+        dest: /apps/abinitio/release/
+        remote_src: false
+      loop: "{{ found_files.files }}"
+      become_user: abinitio
+
+    - name: Extract Folder Path
+      set_fact:
+        folder_path: "{{ found_files.files[0].path |  regex_replace('\\.tgz$', '')  }}"
+
+    - name: Display  Folder Path
+      ansible.builtin.debug:
+        var: folder_path
+
+    - name: Untar Files
+      shell: |
+        su - {{ item }} -c "tar zxvf /apps/abinitio/release/Active360*.tgz -C /apps/abinitio/release/"
+      loop:
+        - abinitio
+
+
+    - name: Parse Coop Configuration Values
+      set_fact:
+        coop_config_values: "{{ (coop_config_file_content['content'] | b64decode).split('\n') | map('trim') }}"
+      register: parsed_config
+
+
+    - name: Read Installation Directory value from config
+      set_fact:
+        destination: "{{ coop_config_values | select('match', '^destination=(.*)') | map('regex_replace', '^destination=(.*)', '\\1') | first }}"
+        app_hub_dest: "{{ coop_config_values | select('match', '^app_hub_dest=(.*)') | map('regex_replace', '^app_hub_dest=(.*)', '\\1') | first }}"
+
+ 
+
+
+    - name: "Fetch JAVA_HOME"
+      shell: dirname $(dirname $(readlink -f $(which java)))
+      register: java_home 
+
+    - name: Get Python Path
+      shell: "which python3"
+      register: python_path
+
+
+    - name: Run Configurator tool
+      expect:
+        command: sh -c "source /etc/profile && ./configurator.ksh"
+        chdir: "{{ folder_path }}"
+        responses:
+          'Would you like to use Basic mode?' : 'y'
+          'ab.aiuser_name:':  "{{ ab_aiuser_name }}"
+          'ab.aiuser_group:':  "{{ ab_aiuser_group }}"
+          'ab.key.host.source:': "{{ ab_key_host_source }}"
+          'ab.key.client.host.urls:': "{{ ab_key_client_host_urls }}"
+          'ab.key.users.source:': "{{ ab_key_users_source }}"
+          'ab.key.client.users.bundle_name:': "{{ ab_key_client_users_bundle_name }}"
+          'ab.key.client.users.urls:': "{{ ab_key_client_users_urls }}"
+          'ab.tmp_dir:': "{{ ab_tmp_dir }}"
+          'act.base_port_prefix:': "{{ act_base_port_prefix }}"
+          'act.name:': "{{ act_name }}"
+          'act.portal.scaled_binary_type_decimal_places:': "{{ act_portal_scaled_binary_type_decimal_places }}"
+          'act.root:': "{{ act_root }}"
+          'act.runtime.messagebus_commit_topic_width:': "{{ act_runtime_messagebus_commit_topic_width }}"
+          'act.runtime.messagebus_log_accum_topic_width:': "{{ act_runtime_messagebus_log_accum_topic_width }}"
+          'act.runtime.messagebus_log_entry_topic_width:': "{{ act_runtime_messagebus_log_entry_topic_width }}"
+          'act.runtime.messagebus_service_reject_topic_width:': "{{ act_runtime_messagebus_service_reject_topic_width }}"
+          'act.runtime.messagebus_topic_width:': "{{ act_runtime_messagebus_topic_width }}"
+          'env.java_home:': "{{ java_home.stdout }}"
+          'installer.ab_home:': "{{ destination }}/abinitio-V{{ coop_version }}" 
+          'installer.cloud:' :  "{{ installer_cloud }}"   
+          'installer.python3:' : "{{ python_path.stdout }}"   
+        timeout: 120
+      register: command_output
+      become_user: abinitio
+
+    - name: Create directory hierarchy and set ownership
+      shell: |
+        sudo mkdir -p /data/a360
+        sudo mkdir -p /data/tmp
+        sudo chown -R {{ item }}:{{ item }} /data/a360
+        sudo chown -R {{ item }}:{{ item }} /data/tmp
+      loop:
+        - abinitio
+     
+    #- name: Comment out a AB_DATA_DIR in abinitiorc
+    #  ansible.builtin.lineinfile:
+    #    path: /etc/profile
+    #    regexp: '.*AB_DATA_DIR'  # The line you want to comment out
+    #    line: '# {{ item }}'  # Commented out line
+    #  loop:
+    #    -  AB_DATA_DIR # This should match the line you want to comment out
+    #- name: Comment out a AB_WORK_DIR in abinitiorc
+    #  ansible.builtin.lineinfile:
+    #    path: /etc/profile
+    #    regexp: '.*AB_WORK_DIR'  # The line you want to comment out
+    #    line: '# {{ item }}'  # Commented out line
+    #  loop:
+    #    -  AB_WORK_DIR # This should match the line you want to comment out
+
+    - name: Change default shell to ksh
+      user:
+        name: abinitio
+        shell: /bin/ksh  # Specify the ksh shell path
+
+    - name: Upgrade pip3
+      become: yes
+      pip:
+        name: pip
+        state: latest
+
+    - name: Install cryptography library
+      become: yes
+      pip:
+        name: cryptography
+        state: latest
+
+    - name: Install Ansible
+      become: yes
+      pip:
+        name: ansible
+        state: latest
+
+   # - name: Ensure epel repo present
+   #   yum:
+   #     name: https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+   #     state: present
+#
+#
+   # - name: Install EPEL repository (for CentOS/RHEL)
+   #   ansible.builtin.yum:
+   #     name: epel-release
+   #     state: present
+#
+   # - name: Install Ansible
+   #   yum:
+   #     name: ansible
+   #     state: present
+
+    - name: Run Install Script
+      ansible.builtin.command: 
+        cmd: sh -c "source /apps/abinitio/release/source_and_run_act360.ksh && ./active_install.ksh -c ./active.yml >> ./a360_install.log"
+      register: command_output
+      become_user: abinitio
+      args:
+        chdir: "{{ folder_path }}"
+    
+    - name: Display command outputs
+      ansible.builtin.debug:
+        var: command_output
+  handlers:
+    - name: Reload Profile
+      shell: source /etc/profile  # Command to reload the profile
