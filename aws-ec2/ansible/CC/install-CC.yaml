@@ -1,0 +1,206 @@
+- name: AG Installation
+  hosts: cip-instance
+  become: yes # Run tasks with root privileges
+
+  tasks:
+
+    - name: Transfer installer-versions.yml
+      copy:
+        src: ../installer-versions.yml
+        dest: /tmp/installer-versions.yml
+        remote_src: false
+      become_user: abinitio
+
+    - name: Load Global parameters
+      include_vars:
+        file: ../installer-versions.yml
+
+    - name: Copy Config File
+      copy:
+        src: "./cc-config.ini"
+        dest: "/apps/abinitio/release/"
+        remote_src: false
+      become_user: abinitio
+
+    - name: Display Version
+      ansible.builtin.debug:
+        var: cc_version
+
+    - name: Read Coop Configuration File
+      slurp:
+        src: /apps/abinitio/release/coop-config.ini
+      register: coop_config_file_content
+
+    - name: Read Configuration File
+      slurp:
+        src: /apps/abinitio/release/cc-config.ini
+      register: config_file_content
+
+    - name: Find the Installer Tar
+      find:
+        paths: /apps/abinitio/release/
+        patterns: "ControlCenter.*{{ cc_version }}.tgz"
+      register: found_files
+      delegate_to: localhost
+      become: false
+    - name: Display  File List
+      ansible.builtin.debug:
+        var: found_files
+
+    - name: Copy files to remote host
+      copy:
+        src: "{{ item.path }}"
+        dest: /apps/abinitio/release/
+        remote_src: false
+      loop: "{{ found_files.files }}"
+      become_user: abinitio
+
+    - name: Extract Folder Path
+      set_fact:
+        folder_path: "{{ found_files.files[0].path |  regex_replace('\\.tgz$', '')  }}"
+
+    - name: Display  Folder Path
+      ansible.builtin.debug:
+        var: folder_path
+
+    - name: Untar Files
+      shell: |
+        su - {{ item }} -c "tar zxvf /apps/abinitio/release/ControlCenter*.tgz -C /apps/abinitio/release/"
+      loop:
+        - abinitio
+
+
+    - name: Parse Coop Configuration Values
+      set_fact:
+        coop_config_values: "{{ (coop_config_file_content['content'] | b64decode).split('\n') | map('trim') }}"
+      register: parsed_config
+
+    - name: Parse Configuration Values
+      set_fact:
+        config_values: "{{ (config_file_content['content'] | b64decode).split('\n') | map('trim') }}"
+      register: parsed_config
+
+    - name: Read Installation Directory value from config
+      set_fact:
+        app_hub_dest: "{{ coop_config_values | select('match', '^app_hub_dest=(.*)') | map('regex_replace', '^app_hub_dest=(.*)', '\\1') | first }}"
+
+    - name: Skip Header Line
+      set_fact:
+        config_values_no_header: "{{ config_values | reject('match', '^\\[Cafe\\]$') | list }}"
+
+    - name: Display Arguments
+      debug:
+        var: config_values_no_header  
+
+    - name: Read Installation Directory value from config
+      set_fact:
+        install_root: "{{ config_values | select('match', '^install_root=(.*)') | map('regex_replace', '^install_root=(.*)', '\\1') | first }}"
+        deployment_name: "{{ config_values | select('match', '^pkg_cc_deployment_name=(.*)') | map('regex_replace', '^pkg_cc_deployment_name=(.*)', '\\1') | first }}"
+        #master_encrypted_password: "{{ config_values | select('match', '^mh\\.master\\.password_mhub_encrypted: ''(.*)''$') | map('regex_replace', '^^mh\\.master\\.password_mhub_encrypted: ''(.*)''$', '\\1') | first }}"
+    
+    
+    - name: Add AG_LOCAL_ROOT in global apphubrc
+      lineinfile:
+        path: "{{ app_hub_dest }}/config/apphubrc"
+        line: |
+          AB_CC_LOCAL_ROOT : /apps/abinitio/abinitio-deployment/cc
+
+    - name: Run Install Script
+      ansible.builtin.command: 
+        cmd: sh -c "source /etc/profile && ./cc-install.ksh -install-root {{ install_root }}"
+      register: command_output
+      become_user: abinitio
+      args:
+        chdir: "{{folder_path }}"
+    
+    
+
+    - name: Display Expect Script Output
+      debug:
+        var: command_output.stdout_lines
+
+    - name: Extract AB_CC_HOME value
+      set_fact:
+         ab_cc_home: "{{ command_output.stdout_lines | join('\n') | regex_search('set AB_CC_HOME to (.*[0-9])', '\\1') | first }}"
+
+    - name: Add environment parameters to /etc/profile
+      lineinfile:
+        path: /etc/profile
+        line: |
+          export AB_CC_HOME={{ ab_cc_home }}
+        state: present  # Add the line if not present  
+      notify: Reload Profile  
+
+    - name: Copy Setup Parameters file to Installation Directory
+      copy:
+        src: "./cc-config.ini"
+        dest: "{{ ab_cc_home }}/package/setup.properties"
+        remote_src: false
+
+      become_user: abinitio
+    - name: Run Deployment
+      ansible.builtin.command: 
+        cmd: sh -c "source /etc/profile && ./setup.sh batch"
+      register: command_output
+      become_user: abinitio
+      args:
+        chdir: "{{ ab_cc_home }}/package"
+    - name: Display Expect Script Output
+      debug:
+        var: command_output.stdout_lines
+
+    #- name: Restart AG
+    #  ansible.builtin.command: "/apps/abinitio/release/source_and_run.sh {{ item }}"
+    #  with_items:
+    #    - ab-app stop {{ deployment_name }}
+    #    - ab-app start {{ deployment_name }}
+    #  register: command_output
+    #  become_user: abinitio
+
+    #- debug:
+    #    var: command_output.stdout_lines
+    #  loop: "{{ command_output.results }}"
+
+    - name: Shutdown App 
+      ansible.builtin.command: "/apps/abinitio/release/source_and_run.sh ab-app force-stop {{ deployment_name }}"
+      register: command_output
+      become_user: abinitio
+
+    - name: Display output
+      ansible.builtin.debug:
+        var: command_output.stdout_lines
+
+    - name: Pause for 20 seconds
+      pause:
+        seconds: 20
+    #- name: Start App 
+    #  ansible.builtin.command: "/apps/abinitio/release/source_and_run.sh ab-app start {{ deployment_name }}"
+    #  register: command_output
+    #  become_user: abinitio
+
+    - name: Start CC
+      shell: |
+        su - abinitio -c "ab-app start {{ deployment_name }}"
+      register: command_outputs
+
+    - name: Display command outputs
+      ansible.builtin.debug:
+        var: command_outputs
+    
+    - name: Pause for 20 seconds
+      pause:
+        seconds: 20
+
+    
+    - name: Check Status CC
+      shell: |
+        su - abinitio -c "ab-app status {{ deployment_name }}"
+      register: command_outputs
+
+    - name: Display command outputs
+      ansible.builtin.debug:
+        var: command_outputs
+
+  handlers:
+    - name: Reload Profile
+      shell: source /etc/profile  # Command to reload the profile
