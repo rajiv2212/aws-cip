@@ -1,8 +1,10 @@
-- name: Cafe Installation
+- name: CAFE Installation
   hosts: cip-instance
   become: yes # Run tasks with root privileges
   vars:
-    cafe_version: "{{ lookup('env', 'CAFE_VERSION').split(',')[0] }}"
+    log_file: "{{ lookup('env', 'LOG_FILE').split(',') | first}}"
+    comm_config_file: "{{ lookup('env', 'CONFIG_FILE').split(',') | first}}"
+  
   tasks:
     - name: Copy Config File
       copy:
@@ -10,22 +12,73 @@
         dest: "/apps/abinitio/release/"
         remote_src: false
       become_user: abinitio
+    
+    - name: Load Global parameters
+      include_vars:
+        file: "{{ item }}"
+      with_items:
+        - ../installer-versions.yml
+        - "{{ comm_config_file }}"
+
+    - name: Log step
+      lineinfile:
+        path: "{{ log_file }}"
+        line: |
+          => Updating Cafe Config File
+        state: present
+      delegate_to: localhost
+      no_log: true
+      become: false
+      
+    - name: Update AG_URL in cafe-config.ini
+      ansible.builtin.replace:
+        path: /apps/abinitio/release/cafe-config.ini
+        regexp: 'AG_URL'
+        replace: '{{ ag_url }}'
+
+    - name: Update AG_JOINER password in cafe-config.ini
+      ansible.builtin.replace:
+        path: /apps/abinitio/release/cafe-config.ini
+        regexp: 'JOINER_PASSWORD'
+        replace: '{{ ag_encrypted_password }}'
+
+    - name: Read Coop Configuration File
+      slurp:
+        src: /apps/abinitio/release/coop-config.ini
+      register: coop_config_file_content
 
     - name: Read Configuration File
       slurp:
         src: /apps/abinitio/release/cafe-config.ini
       register: config_file_content
 
+    - name: Log step
+      lineinfile:
+        path: "{{ log_file }}"
+        line: |
+          =>Searching for installer for Cafe Version {{ cafe_version }}
+        state: present
+      delegate_to: localhost
+      no_log: true
+      become: false
+    
     - name: Find the Installer Tar
       find:
         paths: /apps/abinitio/release/
-        patterns: "Cafe.*{{ cafe_version }}.tgz"
+        patterns: "Cafe.*{{ cafe_version }}*gz"
       register: found_files
       delegate_to: localhost
       become: false
-    - name: Display  File List
-      ansible.builtin.debug:
-        var: found_files
+
+    - name: Log step
+      lineinfile:
+        path: "{{ log_file }}"
+        line: |
+          => Found Installer {{ found_files.files[0].path }}
+        state: present
+      delegate_to: localhost
+      no_log: true
+      become: false
 
     - name: Copy files to remote host
       copy:
@@ -37,7 +90,7 @@
 
     - name: Extract Folder Path
       set_fact:
-        folder_path: "{{ found_files.files[0].path |  regex_replace('\\.tgz$', '')  }}"
+        folder_path: "{{ found_files.files[0].path |  regex_replace('\\.(tgz|tar\\.gz)$', '')  }}"
 
     - name: Display  Folder Path
       ansible.builtin.debug:
@@ -45,45 +98,132 @@
 
     - name: Untar Files
       shell: |
-        su - {{ item }} -c "tar zxvf /apps/abinitio/release/Cafe*.tgz -C /apps/abinitio/release/"
+        su - {{ item }} -c "tar zxvf /apps/abinitio/release/Cafe.*{{ cafe_version }}*gz -C /apps/abinitio/release/"
       loop:
         - abinitio
+
+    - name: Parse Coop Configuration Values
+      set_fact:
+        coop_config_values: "{{ (coop_config_file_content['content'] | b64decode).split('\n') | map('trim') }}"
+      register: parsed_config
 
     - name: Parse Configuration Values
       set_fact:
         config_values: "{{ (config_file_content['content'] | b64decode).split('\n') | map('trim') }}"
       register: parsed_config
-      
+
+    - name: Read Installation Directory value from config
+      set_fact:
+        app_hub_dest: "{{ coop_config_values | select('match', '^app_hub_dest=(.*)') | map('regex_replace', '^app_hub_dest=(.*)', '\\1') | first }}"
+
     - name: Skip Header Line
       set_fact:
         config_values_no_header: "{{ config_values | reject('match', '^\\[Cafe\\]$') | list }}"
 
     - name: Display Arguments
       debug:
-        var: config_values_no_header  
+        var: config_values_no_header
 
-    - name: Read Installation Directory value from config
-      set_fact:
-        http_port: "{{ config_values | select('match', '^http_port=(.*)') | map('regex_replace', '^http_port=(.*)', '\\1') | first }}"
-       
-    - name: Run Install Script
-      expect:
-        command: sh -c "source /etc/profile && ./setup.sh"
-        chdir: "{{ folder_path }}"  
-        responses:
-          'Perform the basic Cafe installation?': "no"
-          "call the web application" :  "cipcafe.war"
-          "listen on" : "{{ http_port }}"
-          "What application server are you using?" : "{{ app_server }}"
-          "Does the application require external configuration" : "no"
-          "Use https for all connections between the web browser and web application" : "no"
-          "Set the Secure attribute on cookies returned by the application" : "no"
-          "logical name for this intallation" : "cipcafe"
-          "Authentication Type? (AG, SSO):" : "AG"
-        timeout: 10
+    - name: Getting URL
+      ansible.builtin.set_fact:
+        matched_lines: "{{ config_values_no_header | select('regex', 'pkg_appServer_http_port|pkg_appServer_deploy_path') | list }}"
+
+    - name: Getting URL
+      ansible.builtin.set_fact:
+        port_number: "{{ matched_lines[0].split('=')[-1] }}"
+        root_path: "{{ matched_lines[1].split('=/')[-1] }}"
+
+    - name: Write Common Config
+      lineinfile:
+        path: "{{ comm_config_file }}"
+        line: |
+          cafe_url: "http://{{ cip_hostname }}:{{ port_number }}/{{ root_path }}/app/"
+          cafe_port: "{{ port_number }}"
+          cafe_root_path: "{{ root_path }}"
+          cafe_user: "rajiv"
+          cafe_password: "rajiv"
+        state: present
+      delegate_to: localhost
+      no_log: true
+      become: false
+
+    - name: Log step
+      lineinfile:
+        path: "{{ log_file }}"
+        line: |
+          => Creating Cafe setup.properties file And Deploying Cafe
+        state: present
+      delegate_to: localhost
+      no_log: true
+      become: false
+
+    - name: Create properties file
+      ansible.builtin.command:
+       cmd: sh -c "cp -r /apps/abinitio/release/cafe-config.ini /apps/abinitio/release/Cafe.{{ cafe_version }}*/setup.properties"
       become_user: abinitio
-      register: expect_result
+
+    - name: Run Deployment
+      ansible.builtin.command:
+        cmd: sh -c "source /etc/profile && cd /apps/abinitio/release/Cafe.*/  && ./setup.sh batch"
+      register: command_output
+      become_user: abinitio
 
     - name: Display Expect Script Output
       debug:
-        var: expect_result.stdout_lines
+        var: command_output
+
+    - name: Start Cafe
+      shell: |
+        su - abinitio -c "ab-app start cipcafe"
+      register: command_outputs
+
+    - name: Display Expect Script Output
+      debug:
+        var: command_output
+
+    - name: Log step
+      lineinfile:
+        path: "{{ log_file }}"
+        line: |
+          => Running Cafe "ab-app start cipcafe"
+        state: present
+      delegate_to: localhost
+      no_log: true
+      become: false
+
+    - name: Add cafe settings for eme in apphubrc
+      lineinfile:
+        path: "{{ app_hub_dest }}/config/apphubrc"
+        line: |
+          AB_AIR_ROOT @ cipcafe : /data/eme/cipeme/repo
+          AB_AIR_BRANCH @ cipcafe : main
+          AB_APPCONF_ROOT_DIR @ cipcafe : /data/sand/appconfdir
+
+    - name: Log step
+      lineinfile:
+        path: "{{ log_file }}"
+        line: |
+          => Creating Cafe User in AG
+        state: present
+      delegate_to: localhost
+      no_log: true
+      become: false
+    
+    - name: Copy AG Feed File and User Excel for Cafe
+      copy:
+        src: "{{ item }}"
+        dest: /apps/abinitio/ag_user_feeds
+        remote_src: false
+      with_items:
+        - ./cafe-users-and-groups.xlsx
+        - ./CafeCreateUserGroup.feed
+      become_user: abinitio
+    
+    - name: Setup User
+      shell: |
+        source /etc/profile
+        source /apps/abinitio/abinitio-deployment/ag/authgateway/config/import.profile
+        export AB_AG_CONN_PARAMS="-a {{ ag_url }} -u {{ ag_user }} -p {{ ag_password }}"
+        ag-import feed save /apps/abinitio/ag_user_feeds/CafeCreateUserGroup.feed
+        ag-import run -feed "CafeCreateUserGroup" -progress -approve
+      become_user: abinitio
