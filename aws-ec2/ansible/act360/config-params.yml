@@ -1,19 +1,25 @@
 #Vars
+Would you like to use Basic mode: "y"
+Please provide ansible-vault key for password encryption: "abIniti0"
 ab_aiuser_name:  "abinitio"
 ab_aiuser_group:  "abinitio"
 ab_key_host_source: 'server'
 ab_key_client_host_urls: 'abks://SIKEY.abinitio.com:50116'
 ab_key_users_source: 'server'
-ab_key_client_users_bundle_name: 'RYPE01'
+#ab_key_client_users_bundle_name: 'RYPE01'
 ab_key_client_users_urls: 'abks://SIKEY.abinitio.com:50115'
-ab_tmp_dir: '/tmp'
+ab_tmp_dir: '/data/tmp'
 act_base_port_prefix: '290'
 act_name: 'act360'
 act_portal_scaled_binary_type_decimal_places: '2'
 act_root: /data/act360
+act.data_root: /data/act360
+act.config_dir: /disk1/act360/config
 act_runtime_messagebus_commit_topic_width: '1'
-act_runtime_messagebus_log_accum_topic_width: '100'
-act_runtime_messagebus_log_entry_topic_width: '50'
-act_runtime_messagebus_service_reject_topic_width: '50'
-act_runtime_messagebus_topic_width: '50'
+act.runtime.messagebus_topic_width: '3'
+act_runtime_messagebus_log_entry_topic_width: '3'
+act_runtime_messagebus_log_accum_topic_width: '3'
+act_runtime_messagebus_service_reject_topic_width: '3'
+env.java_home: '/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.382.b05-2.el9.x86_64/jre'
 installer_cloud : 'True'
+installer.python3: '/usr/bin/python3'
