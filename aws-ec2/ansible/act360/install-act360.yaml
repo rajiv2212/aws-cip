@@ -124,8 +124,8 @@
           'act.name:': "{{ act_name }}"
           'act.portal.scaled_binary_type_decimal_places:': "{{ act_portal_scaled_binary_type_decimal_places }}"
           'act.root:': "{{ act_root }}"
-          'act.data_root:': "{{ act.data_root }}
-          'act.config_dir:': "{{ act.config_dir: }}"
+          'act.data_root:': "{{ act.data_root }}"
+          'act.config_dir:': "{{ act.config_dir }}"
           'act.runtime.messagebus_commit_topic_width:': "{{ act_runtime_messagebus_commit_topic_width }}"
           'act.runtime.messagebus_topic_width:': "{{ act_runtime_messagebus_topic_width }}"
           'act.runtime.messagebus_log_entry_topic_width:': "{{ act_runtime_messagebus_log_entry_topic_width }}"
