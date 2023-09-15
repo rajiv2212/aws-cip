@@ -111,13 +111,12 @@
         chdir: "{{ folder_path }}"
         responses:
           Would you like to use Basic mode? : "y"
-          Please provide ansible-vault key for password encryption' : 'abIniti0'
+          Please provide ansible-vault key for password encryption' : "abIniti0"
           ab.aiuser_name: "{{ ab_aiuser_name }}"
           ab.aiuser_group: "{{ ab_aiuser_group }}"
           ab.key.host.source:': "{{ ab_key_host_source }}"
           ab.key.client.host.urls: "{{ ab_key_client_host_urls }}"
           ab.key.users.source: "{{ ab_key_users_source }}"
-          #'ab.key.client.users.bundle_name: "{{ ab_key_client_users_bundle_name }}"
           ab.key.client.users.urls: "{{ ab_key_client_users_urls }}"
           ab.tmp_dir: "{{ ab_tmp_dir }}"
           act.base_port_prefix: "{{ act_base_port_prefix }}"
