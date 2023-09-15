@@ -36,7 +36,7 @@ pipeline
                 script {
                     
                     def sT = new Date()
-                    def timeFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+                   // def timeFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
                     def startTime = sT.format(TIME_FORMAT)
                     echo "##### SUMMARY LOG FILE : ${env.LOG_FILE} #########"
                     sh "rm -f ${env.LOG_FILE}"
