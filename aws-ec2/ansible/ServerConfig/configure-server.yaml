@@ -49,6 +49,7 @@
     - name: Create directory hierarchy and set ownership
       shell: |
         sudo mkdir -p /apps/abinitio/release
+        sudo mkdir -p /apps/abinitio/ag_user_feeds
         sudo mkdir -p /data/eme/cipeme
         sudo mkdir -p /data/a360
         sudo mkdir -p /data/sand/appconfdir
@@ -56,6 +57,7 @@
         sudo mkdir -p /apps/abinitio/abinitio-deployment/ag
         sudo mkdir -p /apps/abinitio/abinitio-deployment/cc
         sudo chown -R {{ item }}:{{ item }} /apps/abinitio/release
+        sudo chown -R {{ item }}:{{ item }} /apps/abinitio/ag_user_feeds
         sudo chown -R {{ item }}:{{ item }} /data/eme/cipeme
         sudo chown -R {{ item }}:{{ item }} /data/a360
         sudo chown -R {{ item }}:{{ item }} /data
@@ -131,6 +133,22 @@
       no_log: true
       become: false
 
+      - name: Install java-devel on CentOS/RHEL
+      when: ansible_distribution in ['CentOS', 'RedHat']
+      yum:
+        name: java-devel
+        state: present
+    
+    - name: Log step
+      lineinfile:
+        path: "{{ log_file }}"
+        line: |
+          =>java-devel successfully installed on {{ inventory_hostname }}
+        state: present
+      delegate_to: localhost
+      no_log: true
+      become: false
+
     - name: Install npm (Node Package Manager)
       when: ansible_distribution in ['CentOS', 'RedHat', 'Debian', 'Ubuntu']
       package:
@@ -183,6 +201,26 @@
       no_log: true
       become: false
 
+    - name: Install jq
+      yum:
+        name: jq
+        state: present
+      when: ansible_distribution == 'CentOS' or ansible_distribution == 'RedHat' 
+
+    - name: Fetch jq Version
+      shell: "jq --version"
+      register: jq_version
+
+    - name: Log step
+      lineinfile:
+        path: "{{ log_file }}"
+        line: |
+          =>jq successfully installed on {{ inventory_hostname }}. Jq Version "{{ jq_version.stdout }}"
+        state: present
+      delegate_to: localhost
+      no_log: true
+      become: false
+
     - name: Install pexpect library using pip
       pip:
         name: pexpect
@@ -191,4 +229,3 @@
   handlers:
     - name: Reload Profile
       shell: source /etc/profile  # Command to reload the profile
-    
