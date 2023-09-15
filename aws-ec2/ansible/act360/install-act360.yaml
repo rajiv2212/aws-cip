@@ -110,10 +110,10 @@
         command: sh -c "source /etc/profile && ./configurator.ksh"
         chdir: "{{ folder_path }}"
         responses:
-          'Would you like to use Basic mode?' : 'y'
+          Would you like to use Basic mode? : "y"
           'Please provide ansible-vault key for password encryption' : 'abIniti0'
-          'ab.aiuser_name:':  "{{ ab_aiuser_name }}"
-          'ab.aiuser_group:':  "{{ ab_aiuser_group }}"
+          'ab.aiuser_name: "{{ ab_aiuser_name }}"
+          'ab.aiuser_group: "{{ ab_aiuser_group }}"
           'ab.key.host.source:': "{{ ab_key_host_source }}"
           'ab.key.client.host.urls:': "{{ ab_key_client_host_urls }}"
           'ab.key.users.source:': "{{ ab_key_users_source }}"
