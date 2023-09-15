@@ -106,7 +106,7 @@ pipeline
 
             }
         }
-        stage('Install AG') 
+      /*  stage('Install AG') 
         { 
             steps 
             { 
@@ -132,16 +132,16 @@ pipeline
                 //sh 'cd "${WORKSPACE}/aws-ec2/ansible/CC"  ; ansible-playbook -i ../../terraform/inventory.yml -u ec2-user --private-key=../../terraform/aws-cip-key.pem install-CC.yaml' 
 
             }
-        }
-        /*stage('Install A360') 
+        }*/
+        stage('Install A360') 
         { 
             steps 
             { 
                 sh 'cd "${WORKSPACE}/aws-ec2/ansible/act360"  ; ansible-playbook -i ../../terraform/inventory.yml -u ec2-user --private-key=../../terraform/aws-cip-key.pem install-act360.yaml' 
 
             }
-        }*/
-         stage('Install CIP') 
+        }
+         /*stage('Install CIP') 
         { 
             steps 
             { 
@@ -167,6 +167,6 @@ pipeline
                 //sh 'cd "${WORKSPACE}/aws-ec2/ansible/CIP"  ; ansible-playbook -i ../../terraform/inventory.yml -u ec2-user --private-key=../../terraform/aws-cip-key.pem start-cip.yaml' 
 
             }
-        }
+        }*/
     }
 }
