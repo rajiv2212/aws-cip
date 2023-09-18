@@ -1,5 +1,0 @@
-#Vars
-pgpass_entries: '*:*:*:admin:admin'
-sandbox_root: '/data/sandbox'
-data_mount: '/data'
-cip_db_port: '5678'
