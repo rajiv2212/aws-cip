@@ -159,14 +159,16 @@
 
     - name: Create properties file
       ansible.builtin.command:
-       cmd: sh -c "cp -r /apps/abinitio/release/cafe-config.ini /apps/abinitio/release/Cafe.{{ cafe_version }}*/setup.properties"
+       cmd: sh -c "cp -r /apps/abinitio/release/cafe-config.ini {{ folder_path }}/setup.properties"
       become_user: abinitio
 
     - name: Run Deployment
       ansible.builtin.command:
-        cmd: sh -c "source /etc/profile && cd /apps/abinitio/release/Cafe.*/  && ./setup.sh batch"
+        cmd: sh -c "source /etc/profile && ./setup.sh batch"
       register: command_output
       become_user: abinitio
+      args:
+        chdir: "{{folder_path }}"
 
     - name: Display Expect Script Output
       debug:
