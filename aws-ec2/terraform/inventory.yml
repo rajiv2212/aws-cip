@@ -1,0 +1,7 @@
+
+aws-cip:
+  hosts:
+    cip-instance:
+      ansible_host: 43.205.141.12
+    a360-instance:
+      ansible_host: 65.2.136.194
