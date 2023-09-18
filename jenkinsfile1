@@ -106,7 +106,7 @@ pipeline
 
             }
         }
-        stage('Install AG') 
+      /*  stage('Install AG') 
         { 
             steps 
             { 
@@ -124,7 +124,7 @@ pipeline
 
             }
         }
-       /* stage('Install CC') 
+        stage('Install CC') 
         { 
             steps 
             { 
@@ -132,7 +132,7 @@ pipeline
                 //sh 'cd "${WORKSPACE}/aws-ec2/ansible/CC"  ; ansible-playbook -i ../../terraform/inventory.yml -u ec2-user --private-key=../../terraform/aws-cip-key.pem install-CC.yaml' 
 
             }
-        }
+        }*/
         stage('Install A360') 
         { 
             steps 
@@ -141,7 +141,7 @@ pipeline
 
             }
         }
-         stage('Install CIP') 
+         /*stage('Install CIP') 
         { 
             steps 
             { 
