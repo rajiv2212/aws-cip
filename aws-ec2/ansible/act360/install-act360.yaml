@@ -48,7 +48,7 @@
       register: coop_config_file_content
 
 
-   - name: Find the Installer Tar
+    - name: Find the Installer Tar
       find:
         paths: /apps/abinitio/release/
         patterns: "Active360_*{{ a360_version }}.tgz"
