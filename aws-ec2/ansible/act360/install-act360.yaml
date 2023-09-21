@@ -48,7 +48,7 @@
       register: coop_config_file_content
 
 
-    - name: Find the Installer Tar
+   - name: Find the Installer Tar
       find:
         paths: /apps/abinitio/release/
         patterns: "Active360_*{{ a360_version }}.tgz"
@@ -59,13 +59,13 @@
       ansible.builtin.debug:
         var: found_files
 
-    - name: Copy files to remote host
-      copy:
-        src: "{{ item.path }}"
-        dest: /apps/abinitio/release/
-        remote_src: false
-      loop: "{{ found_files.files }}"
-      become_user: abinitio
+   # - name: Copy files to remote host
+    #  copy:
+     #   src: "{{ item.path }}"
+      #  dest: /apps/abinitio/release/
+       # remote_src: false
+     # loop: "{{ found_files.files }}"
+      #become_user: abinitio
 
     - name: Extract Folder Path
       set_fact:
@@ -75,11 +75,11 @@
       ansible.builtin.debug:
         var: folder_path
 
-    - name: Untar Files
-      shell: |
-        su - {{ item }} -c "tar zxvf /apps/abinitio/release/Active360*.tgz -C /apps/abinitio/release/"
-      loop:
-        - abinitio
+    #- name: Untar Files
+     # shell: |
+      #  su - {{ item }} -c "tar zxvf /apps/abinitio/release/Active360*.tgz -C /apps/abinitio/release/"
+      #loop:
+       # - abinitio
 
 
     - name: Parse Coop Configuration Values
@@ -123,8 +123,8 @@
           act.name: "{{ act_name }}"
           act.portal.scaled_binary_type_decimal_places: "{{ act_portal_scaled_binary_type_decimal_places }}"
           act.root: "{{ act_root }}"
-          act.data_root: "{{ act.data_root }}"
-          act.config_dir: "{{ act.config_dir }}"
+          act.data_root: "{{ act_data_root }}"
+          act.config_dir: "{{ act_config_dir }}"
           act.runtime.messagebus_commit_topic_width: "{{ act_runtime_messagebus_commit_topic_width }}"
           act.runtime.messagebus_topic_width: "{{ act_runtime_messagebus_topic_width }}"
           act.runtime.messagebus_log_entry_topic_width: "{{ act_runtime_messagebus_log_entry_topic_width }}"
