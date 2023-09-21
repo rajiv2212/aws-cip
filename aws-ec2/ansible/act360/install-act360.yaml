@@ -59,13 +59,13 @@
       ansible.builtin.debug:
         var: found_files
 
-   # - name: Copy files to remote host
-    #  copy:
-     #   src: "{{ item.path }}"
-      #  dest: /apps/abinitio/release/
-       # remote_src: false
-     # loop: "{{ found_files.files }}"
-      #become_user: abinitio
+    - name: Copy files to remote host
+      copy:
+        src: "{{ item.path }}"
+        dest: /apps/abinitio/release/
+        remote_src: false
+      loop: "{{ found_files.files }}"
+      become_user: abinitio
 
     - name: Extract Folder Path
       set_fact:
@@ -75,11 +75,11 @@
       ansible.builtin.debug:
         var: folder_path
 
-    #- name: Untar Files
-     # shell: |
-      #  su - {{ item }} -c "tar zxvf /apps/abinitio/release/Active360*.tgz -C /apps/abinitio/release/"
-      #loop:
-       # - abinitio
+    - name: Untar Files
+      shell: |
+        su - {{ item }} -c "tar zxvf /apps/abinitio/release/Active360*.tgz -C /apps/abinitio/release/"
+      loop:
+        - abinitio
 
 
     - name: Parse Coop Configuration Values
